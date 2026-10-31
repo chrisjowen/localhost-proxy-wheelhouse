@@ -145,8 +145,9 @@ export class LocalProxy {
 	 */
 	async tunnel(req, socket, head, ctx) {
 		const gone = new AbortController();
-		socket.on('close', () => gone.abort());
-		socket.on('end', () => gone.abort());
+		const leave = () => gone.abort();
+		socket.on('close', leave);
+		socket.on('end', leave);
 		const verdict = await this.check(ctx, req.url ?? '/');
 		if (!verdict.ok) return refuse(socket, verdict.status, 'Not shared through Wheelhouse.');
 		const upstream = await this.connect(verdict.port, gone.signal);
@@ -160,6 +161,8 @@ export class LocalProxy {
 			signal: gone.signal
 		});
 		out.on('upgrade', (up, upSocket, upHead) => {
+			socket.off('close', leave);
+			socket.off('end', leave);
 			upSocket.on('error', () => socket.destroy());
 			socket.on('close', () => upSocket.destroy());
 			upSocket.on('close', () => socket.destroy());
@@ -170,6 +173,7 @@ export class LocalProxy {
 		});
 		// The app answered without switching protocols: pass that answer on and close.
 		out.on('response', (up) => {
+			socket.off('end', leave);
 			socket.write(
 				statusLine(up) +
 					rawHeaders(up.rawHeaders, host, ['connection', 'transfer-encoding', 'content-length'])

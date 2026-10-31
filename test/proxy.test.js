@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
-import { createServer as createRawServer } from 'node:net';
+import { connect, createServer as createRawServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -279,6 +279,40 @@ describe('what the proxy refuses', () => {
 });
 
 describe('when things go wrong mid-way', () => {
+	it('passes a viewer’s half-close on to the app through a working tunnel', async () => {
+		const server = createRawServer({ allowHalfOpen: true }, (sock) => {
+			let got = '';
+			sock.once('data', () => {
+				sock.write(
+					'HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n'
+				);
+				sock.on('data', (c) => (got += c));
+				sock.on('end', () => sock.end(`got ${got}`));
+			});
+		});
+		const port = await listen(/** @type {any} */ (server));
+		reported = new Set([port]);
+		try {
+			const reply = await new Promise((resolve, reject) => {
+				const viewer = connect({ host: '127.0.0.1', port: frontPort, allowHalfOpen: true }, () =>
+					viewer.write(
+						`GET / HTTP/1.1\r\nHost: ${hostFor(port)}\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n`
+					)
+				);
+				let text = '';
+				viewer.on('data', (c) => {
+					text += c;
+					if (text.includes('\r\n\r\n') && !viewer.writableEnded) viewer.end('bye');
+				});
+				viewer.on('end', () => resolve(text.slice(text.indexOf('\r\n\r\n') + 4)));
+				viewer.on('error', reject);
+			});
+			assert.equal(reply, 'got bye');
+		} finally {
+			server.close();
+		}
+	});
+
 	it('passes on an app’s chunked refusal of a WebSocket as a readable answer', async () => {
 		const raw = await rawApp(
 			'HTTP/1.1 400 Bad Request\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nnope!\r\n0\r\n\r\n'
