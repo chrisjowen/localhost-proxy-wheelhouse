@@ -1,0 +1,28 @@
+{
+	"$schema": "https://raw.githubusercontent.com/chrisjowen/wheelhouse/main/packages/plugin-sdk/plugin.schema.json",
+	"name": "localhost-proxy",
+	"displayName": "Localhost proxy",
+	"version": "0.1.0",
+	"description": "Opens the crew’s localhost previews and links through Wheelhouse itself, so they work when Wheelhouse runs in Docker, a cloud workspace or another computer.",
+	"author": { "name": "Chris Owen", "url": "https://github.com/chrisjowen" },
+	"repository": "https://github.com/chrisjowen/localhost-proxy-wheelhouse",
+	"license": "MIT",
+	"keywords": ["proxy", "localhost", "docker", "preview"],
+	"wheelhouse": {
+		"apiVersion": 1,
+		"server": "wheelhouse/server/index.js",
+		"enabledByDefault": false,
+		"contributions": [],
+		"services": [],
+		"addressRewrites": [{ "id": "localhost", "to": "{port}.localhost" }],
+		"hostRoutes": [{ "id": "proxy", "host": "{port}.localhost" }],
+		"settings": {
+			"ports": {
+				"title": "More ports to allow",
+				"description": "Ports on Wheelhouse’s computer to open even when nobody has reported them (for example 3000, 8080). Wheelhouse’s own port is never opened.",
+				"type": "list",
+				"default": []
+			}
+		}
+	}
+}
