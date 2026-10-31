@@ -36,7 +36,7 @@
 
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
-import { loopbackPort, proxiedUrl, settingPorts } from './addresses.js';
+import { loopbackPort, settingPorts } from './addresses.js';
 
 /** Hop-by-hop headers, never passed on in either direction. */
 const HOP = new Set([
@@ -111,16 +111,19 @@ export class LocalProxy {
 	 * @param {RouteContext} ctx
 	 */
 	async forward(req, res, ctx) {
+		const gone = new AbortController();
+		res.on('close', () => gone.abort());
 		const verdict = await this.check(ctx, req.url ?? '/');
 		if (!verdict.ok) return send(res, verdict.status, verdict.page);
-		const upstream = await this.connect(verdict.port);
+		const upstream = await this.connect(verdict.port, gone.signal);
 		if (!upstream) return send(res, 502, page(NOT_ANSWERING));
 		const host = ctx.host;
 		const out = httpRequest({
 			createConnection: () => upstream,
 			method: req.method,
 			path: req.url,
-			headers: requestHeaders(req.headers, verdict.port, host, false)
+			headers: requestHeaders(req.headers, verdict.port, host, false),
+			signal: gone.signal
 		});
 		out.on('response', (up) => {
 			res.writeHead(up.statusCode ?? 502, up.statusMessage, responseHeaders(up.headers, host));
@@ -131,7 +134,6 @@ export class LocalProxy {
 			if (!res.headersSent) send(res, 502, page(NOT_ANSWERING));
 			else res.destroy();
 		});
-		res.on('close', () => out.destroy());
 		req.pipe(out);
 	}
 
@@ -142,16 +144,20 @@ export class LocalProxy {
 	 * @param {RouteContext} ctx
 	 */
 	async tunnel(req, socket, head, ctx) {
+		const gone = new AbortController();
+		socket.on('close', () => gone.abort());
+		socket.on('end', () => gone.abort());
 		const verdict = await this.check(ctx, req.url ?? '/');
 		if (!verdict.ok) return refuse(socket, verdict.status, 'Not shared through Wheelhouse.');
-		const upstream = await this.connect(verdict.port);
+		const upstream = await this.connect(verdict.port, gone.signal);
 		if (!upstream) return refuse(socket, 502, 'Nothing is answering on that port.');
 		const host = ctx.host;
 		const out = httpRequest({
 			createConnection: () => upstream,
 			method: req.method,
 			path: req.url,
-			headers: requestHeaders(req.headers, verdict.port, host, true)
+			headers: requestHeaders(req.headers, verdict.port, host, true),
+			signal: gone.signal
 		});
 		out.on('upgrade', (up, upSocket, upHead) => {
 			upSocket.on('error', () => socket.destroy());
@@ -164,7 +170,10 @@ export class LocalProxy {
 		});
 		// The app answered without switching protocols: pass that answer on and close.
 		out.on('response', (up) => {
-			socket.write(statusLine(up) + rawHeaders(up.rawHeaders, host, ['connection']));
+			socket.write(
+				statusLine(up) +
+					rawHeaders(up.rawHeaders, host, ['connection', 'transfer-encoding', 'content-length'])
+			);
 			up.pipe(socket);
 		});
 		out.on('error', () => socket.destroy());
@@ -175,13 +184,15 @@ export class LocalProxy {
 	 * A connection to the port on loopback, trying each address in turn; null when none answers.
 	 *
 	 * @param {number} port
+	 * @param {AbortSignal} [signal] Gives up, closing any connection, once the viewer has left.
 	 * @returns {Promise<Socket | null>}
 	 */
-	async connect(port) {
+	async connect(port, signal) {
 		for (const host of this.targets) {
+			if (signal?.aborted) return null;
 			/** @type {Socket | null} */
 			const socket = await new Promise((resolve) => {
-				const s = connect({ host, port });
+				const s = connect({ host, port, signal });
 				const timer = setTimeout(() => {
 					s.destroy();
 					resolve(null);
@@ -269,8 +280,11 @@ export function responseHeaders(headers, host) {
  * @param {string} host
  */
 export function rewriteLocation(location, host) {
-	const [hostname, port = ''] = host.split(':');
-	return proxiedUrl(location, { protocol: 'http:', hostname, port });
+	const port = loopbackPort(location);
+	if (port === null) return location;
+	const u = new URL(location);
+	const at = host.split(':')[1];
+	return `http://${port}.localhost${at ? `:${at}` : ''}${u.pathname}${u.search}${u.hash}`;
 }
 
 /**

@@ -1,4 +1,4 @@
-/** Addresses on Wheelhouse's computer, and the proxied address each opens at. */
+/** Addresses on Wheelhouse's computer, and the ports the plugin's settings allow. */
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost']);
 /** @param {number} n */
@@ -16,27 +16,6 @@ export function loopbackPort(raw) {
 	if (!LOOPBACK.has(u.hostname.toLowerCase())) return null;
 	const port = u.port ? Number(u.port) : 80;
 	return validPort(port) ? port : null;
-}
-
-/**
- * @typedef {{ protocol: string; hostname: string; port: string }} Viewer
- */
-
-/**
- * `raw` at `<port>.localhost` on the viewer's port when it is an http address on this computer.
- *
- * @param {string} raw
- * @param {Viewer} viewer
- * @returns {string}
- */
-export function proxiedUrl(raw, viewer) {
-	const port = loopbackPort(raw);
-	if (port === null) return raw;
-	const own = viewer.port || (viewer.protocol === 'https:' ? '443' : '80');
-	if (LOOPBACK.has(viewer.hostname.toLowerCase()) && String(port) === own) return raw;
-	const u = new URL(raw);
-	const at = `${viewer.protocol}//${port}.localhost${viewer.port ? `:${viewer.port}` : ''}`;
-	return `${at}${u.pathname}${u.search}${u.hash}`;
 }
 
 /**

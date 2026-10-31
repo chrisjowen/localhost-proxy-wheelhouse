@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
+import { createServer as createRawServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
@@ -47,6 +49,8 @@ let reported;
 let reserved;
 /** The headers the app last saw. @type {IncomingHttpHeaders} */
 let seen;
+/** While set, the route waits on it before learning the reported addresses. @type {Promise<void> | null} */
+let held;
 
 before(async () => {
 	app = createServer((req, res) => {
@@ -94,7 +98,10 @@ before(async () => {
 			origin: `http://${host}`,
 			port: Number(m[1]),
 			settings,
-			loopbackAddresses: async () => [...reported].map((p) => `http://localhost:${p}/`),
+			loopbackAddresses: async () => {
+				await held;
+				return [...reported].map((p) => `http://localhost:${p}/`);
+			},
 			reservedPorts: () => [frontPort, ...reserved]
 		};
 	};
@@ -124,7 +131,25 @@ beforeEach(() => {
 	settings = {};
 	reported = new Set([appPort]);
 	reserved = [];
+	held = null;
 });
+
+/**
+ * A bare app on loopback that answers each connection with `reply`, counting them.
+ *
+ * @param {string} reply
+ */
+async function rawApp(reply) {
+	const raw = { connections: 0, port: 0, close: () => {} };
+	const server = createRawServer((sock) => {
+		raw.connections++;
+		sock.on('error', () => {});
+		sock.once('data', () => sock.end(reply));
+	});
+	raw.port = await listen(/** @type {any} */ (server));
+	raw.close = () => server.close();
+	return raw;
+}
 
 /** @param {number} port */
 const hostFor = (port) => `${port}.localhost:${frontPort}`;
@@ -253,6 +278,57 @@ describe('what the proxy refuses', () => {
 	});
 });
 
+describe('when things go wrong mid-way', () => {
+	it('passes on an app’s chunked refusal of a WebSocket as a readable answer', async () => {
+		const raw = await rawApp(
+			'HTTP/1.1 400 Bad Request\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nnope!\r\n0\r\n\r\n'
+		);
+		reported = new Set([raw.port]);
+		try {
+			const r = await get('/', {
+				host: hostFor(raw.port),
+				headers: { connection: 'Upgrade', upgrade: 'websocket', origin: originFor(raw.port) }
+			});
+			assert.equal(r.status, 400);
+			assert.equal(r.body, 'nope!');
+		} finally {
+			raw.close();
+		}
+	});
+
+	it('never opens the app’s port for a viewer that left while it was being checked', async () => {
+		const raw = await rawApp('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok');
+		reported = new Set([raw.port]);
+		/** @type {() => void} */
+		let release = () => {};
+		held = new Promise((r) => (release = r));
+		try {
+			const page = request({
+				host: '127.0.0.1',
+				port: frontPort,
+				path: '/',
+				headers: { host: hostFor(raw.port) }
+			});
+			page.on('error', () => {});
+			page.end();
+			const ws = new WebSocket(`ws://127.0.0.1:${frontPort}/`, {
+				headers: { host: hostFor(raw.port) },
+				origin: originFor(raw.port)
+			});
+			ws.on('error', () => {});
+			await delay(50);
+			page.destroy();
+			ws.terminate();
+			await delay(50);
+			release();
+			await delay(100);
+			assert.equal(raw.connections, 0);
+		} finally {
+			raw.close();
+		}
+	});
+});
+
 describe('header rewriting', () => {
 	it('passes the app its own address and drops hop-by-hop headers', () => {
 		const host = '5173.localhost:4310';
@@ -288,6 +364,12 @@ describe('header rewriting', () => {
 	it('rewrites redirects on this computer only', () => {
 		const host = '5173.localhost:4310';
 		assert.equal(rewriteLocation('http://127.0.0.1:5173/x', host), 'http://5173.localhost:4310/x');
+		assert.equal(
+			rewriteLocation('http://localhost:3000/app/page?x=1#top', host),
+			'http://3000.localhost:4310/app/page?x=1#top'
+		);
+		assert.equal(rewriteLocation('http://localhost:3000', host), 'http://3000.localhost:4310/');
+		assert.equal(rewriteLocation('https://localhost:5173/', host), 'https://localhost:5173/');
 		assert.equal(rewriteLocation('/relative', host), '/relative');
 		assert.equal(rewriteLocation('https://github.com/login', host), 'https://github.com/login');
 	});
