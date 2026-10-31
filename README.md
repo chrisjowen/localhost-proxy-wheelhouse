@@ -11,8 +11,8 @@ It is off until you turn it on in **Settings → Plugins**. It needs a Wheelhous
 ```
 .wheelhouse-plugin/plugin.json   the manifest: off by default, its address rewrite and host route, its settings
 wheelhouse/server/index.js       the host route
-wheelhouse/server/proxy.js       the proxy: which ports it opens, forwarding, WebSockets, header rewrites
-wheelhouse/server/addresses.js   addresses on Wheelhouse's computer, and the proxied address each opens at
+wheelhouse/server/proxy.js       the proxy: which ports it opens, forwarding, WebSockets, header and redirect rewrites
+wheelhouse/server/addresses.js   addresses on Wheelhouse's computer, and the ports the settings allow
 test/                            the tests
 ```
 
