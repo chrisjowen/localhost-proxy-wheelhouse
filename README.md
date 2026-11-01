@@ -2,6 +2,8 @@
 
 A [Wheelhouse](https://github.com/chrisjowen/wheelhouse) plugin. When Wheelhouse runs in Docker, a cloud workspace or on another computer, the localhost addresses the crew reports (live previews, links in Firstmate's replies, status notes and decision cards) point at the viewer's own computer, where nothing answers. While this plugin is on, Wheelhouse shows each of them through itself instead: `http://localhost:5173/app` opens as `http://5173.localhost:4310/app`, where 4310 is the port you reached Wheelhouse on, and the plugin passes the request on to port 5173 on Wheelhouse's own computer. Only Wheelhouse's port needs forwarding.
 
+![A task's Live preview tab in Wheelhouse showing a demo field-notes app. The worker reported http://localhost:5188/surveys; the frame loads it through the proxy, and Open in new tab opens http://5188.localhost:47933/surveys](docs/images/localhost-proxy-live-preview.png)
+
 ```sh
 wheelhouse plugin install chrisjowen/localhost-proxy-wheelhouse
 ```
@@ -27,6 +29,10 @@ It is built on Wheelhouse's [host routes and address rewrites](https://github.co
 ## Which ports it opens
 
 Only a port the crew has reported an address on since Wheelhouse started (`ctx.loopbackAddresses()`), or one **More ports to allow** lists; any other shows a page saying so, with how to allow it and a direct link for use on Wheelhouse's own computer. It never opens one of Wheelhouse's own ports (`ctx.reservedPorts()`: its server and MCP app sandboxes), even when listed.
+
+![The page the proxy shows for port 4000, which nothing has reported: Not shared through Wheelhouse, with how to allow it under Settings → Plugins and a direct link for Wheelhouse's own computer](docs/images/localhost-proxy-not-shared.png)
+
+![The Localhost proxy's page under Settings → Plugins: on for every project, with More ports to allow set to 3000, 8080](docs/images/localhost-proxy-settings.png)
 
 ```json
 { "plugins": { "localhost-proxy": { "enabled": true, "settings": { "ports": ["3000", "8080"] } } } }
