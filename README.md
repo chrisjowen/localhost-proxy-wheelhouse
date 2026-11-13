@@ -15,6 +15,7 @@ It is off until you turn it on in **Settings → Plugins**. It needs a Wheelhous
 wheelhouse/server/index.js       the host route
 wheelhouse/server/proxy.js       the proxy: which ports it opens, forwarding, WebSockets, header and redirect rewrites
 wheelhouse/server/addresses.js   addresses on Wheelhouse's computer, and the ports the settings allow
+wheelhouse/server/hosted.js      hosted environments (Codespaces, Gitpod, the Public address setting) and a port's public address there
 test/                            the tests
 ```
 
@@ -37,6 +38,34 @@ Only a port the crew has reported an address on since Wheelhouse started (`ctx.l
 ```json
 { "plugins": { "localhost-proxy": { "enabled": true, "settings": { "ports": ["3000", "8080"] } } } }
 ```
+
+## In Ona, Gitpod, Codespaces or on a remote machine
+
+When Wheelhouse runs in a hosted dev environment, there are two ways to open it, and the plugin suits one of them.
+
+**Through a forwarded port: the plugin works as anywhere.** Forward Wheelhouse's port to your own computer and open `http://localhost:4310`. A desktop editor connected to the environment (VS Code, Cursor, JetBrains Gateway) forwards it for you, `gh codespace ports forward 4310:4310` does for a codespace, and `ssh -L 4310:localhost:4310 <host>` does for any machine you reach over SSH, Ona and Gitpod environments included. Every preview then opens at `http://<port>.localhost:4310` through the plugin, and only Wheelhouse's port needs forwarding.
+
+**Through the environment's public address**, such as `https://4310-abc123.ws-eu45.gitpod.io` or `https://my-codespace-4310.app.github.dev`. There, a `*.localhost` name goes to your own computer, not the environment, so `{port}.localhost` addresses cannot reach it: keep the plugin off, and open each preview at the environment's own address for its port. A plugin's address rewrite can name only a `*.localhost` host on the viewer's own port (see Wheelhouse's [host routes and address rewrites](https://github.com/chrisjowen/wheelhouse/blob/main/docs/plugins.md#host-routes-and-address-rewrites)), so showing previews at those addresses is Wheelhouse's to do, not this plugin's.
+
+**Where a port's public address is.** The plugin works it out from the environment, or from its **Public address of a port** setting, which wins when set:
+
+| Where Wheelhouse runs                         | Found from                                                                      | A port's public address              |
+| --------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------ |
+| GitHub Codespaces                             | `CODESPACES=true`, `CODESPACE_NAME`, `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` | `https://<name>-<port>.<domain>`     |
+| Gitpod Classic                                | `GITPOD_WORKSPACE_URL`                                                          | `https://<port>-<workspace host>`    |
+| Ona, a devcontainer host, a VM, anywhere else | the **Public address of a port** setting                                        | the setting, with `{port}` filled in |
+
+The setting is an http(s) address with `{port}` once in it: in a host name (`https://{port}-myhost.example.dev`), as the port (`http://my-vm.example.dev:{port}`, for a machine whose ports are open to you) or in a path (`https://ide.example.dev/proxy/{port}/`, for an editor that serves ports under a path). An Ona environment sets no variable a port's address can be worked out from: open a port with `ona environment port open <port>`, which prints its address, and copy that address into the setting with the port number replaced by `{port}`. Ona serves only ports listened on at `0.0.0.0`.
+
+```json
+{
+	"plugins": {
+		"localhost-proxy": { "settings": { "publicAddress": "https://{port}-myhost.example.dev" } }
+	}
+}
+```
+
+Today the plugin uses a port's public address on its own pages: the page for a port it does not open links to that address instead of `http://localhost:<port>`, which only works on Wheelhouse's own computer. Its address rewrite stays `{port}.localhost` either way, and with no setting and no hosted environment found, nothing changes. Whether a public address answers you (a private Codespaces or Gitpod port wants you signed in) is the environment's to say.
 
 ## What turning it on exposes
 

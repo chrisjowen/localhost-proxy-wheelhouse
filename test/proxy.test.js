@@ -51,6 +51,8 @@ let reserved;
 let seen;
 /** While set, the route waits on it before learning the reported addresses. @type {Promise<void> | null} */
 let held;
+/** The environment variables the proxy sees as Wheelhouse's. @type {Record<string, string>} */
+const env = {};
 
 before(async () => {
 	app = createServer((req, res) => {
@@ -87,7 +89,7 @@ before(async () => {
 	});
 	appPort = await listen(app);
 
-	const proxy = new LocalProxy({ targets: ['127.0.0.1'] });
+	const proxy = new LocalProxy({ targets: ['127.0.0.1'], env });
 	// What Wheelhouse hands the route for `<port>.localhost` (see its docs/plugins.md).
 	/** @returns {RouteContext | null} */
 	const ctxFor = (/** @type {string} */ host) => {
@@ -132,6 +134,7 @@ beforeEach(() => {
 	reported = new Set([appPort]);
 	reserved = [];
 	held = null;
+	for (const k of Object.keys(env)) delete env[k];
 });
 
 /**
@@ -253,8 +256,33 @@ describe('what the proxy refuses', () => {
 		assert.match(String(r.headers['content-type']), /text\/html/);
 		assert.ok(r.body.includes(`Nothing has reported port ${appPort}`));
 		assert.ok(r.body.includes('More ports to allow'));
+		// On an ordinary computer it links to the port on Wheelhouse's own computer.
+		assert.ok(r.body.includes(`href="http://localhost:${appPort}/"`));
 		await assert.rejects(socket(originFor(appPort)), /refused 403/);
 
+		settings = { ports: [String(appPort)] };
+		assert.equal((await get('/')).status, 200);
+	});
+
+	it('links a port it does not open to its public address in a hosted environment', async () => {
+		reported = new Set();
+		env.CODESPACES = 'true';
+		env.CODESPACE_NAME = 'demo-space';
+		env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN = 'app.github.dev';
+		const codespace = await get('/app?x=1');
+		assert.equal(codespace.status, 403);
+		assert.ok(codespace.body.includes('as GitHub Codespaces gives it'));
+		assert.ok(
+			codespace.body.includes(`href="https://demo-space-${appPort}.app.github.dev/app?x=1"`)
+		);
+		assert.ok(!codespace.body.includes(`http://localhost:${appPort}/`));
+
+		settings = { publicAddress: 'https://{port}--env1.eu.example.dev' };
+		const set = await get('/');
+		assert.ok(set.body.includes('as the plugin’s Public address setting gives it'));
+		assert.ok(set.body.includes(`href="https://${appPort}--env1.eu.example.dev/"`));
+
+		// It still proxies the ports it opens, as anywhere.
 		settings = { ports: [String(appPort)] };
 		assert.equal((await get('/')).status, 200);
 	});
