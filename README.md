@@ -29,7 +29,7 @@ It is built on Wheelhouse's [host routes and address rewrites](https://github.co
 
 ## Which ports it opens
 
-Only a port the crew has reported an address on since Wheelhouse started (`ctx.loopbackAddresses()`), or one **More ports to allow** lists; any other shows a page saying so, with how to allow it and a direct link for use on Wheelhouse's own computer. It never opens one of Wheelhouse's own ports (`ctx.reservedPorts()`: its server and MCP app sandboxes), even when listed.
+Only a port the crew has reported an address on since Wheelhouse started (`ctx.loopbackAddresses()`), or one **More ports to allow** lists; any other shows a page saying so, with how to allow it and a direct link for use on Wheelhouse's own computer (or, in a hosted environment, to the port's [public address](#in-ona-gitpod-codespaces-or-on-a-remote-machine)). It never opens one of Wheelhouse's own ports (`ctx.reservedPorts()`: its server and MCP app sandboxes), even when listed.
 
 ![The page the proxy shows for port 4000, which nothing has reported: Not shared through Wheelhouse, with how to allow it under Settings → Plugins and a direct link for Wheelhouse's own computer](docs/images/localhost-proxy-not-shared.png)
 
