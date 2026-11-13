@@ -15,6 +15,7 @@ It is off until you turn it on in **Settings → Plugins**. It needs a Wheelhous
 wheelhouse/server/index.js       the host route
 wheelhouse/server/proxy.js       the proxy: which ports it opens, forwarding, WebSockets, header and redirect rewrites
 wheelhouse/server/addresses.js   addresses on Wheelhouse's computer, and the ports the settings allow
+wheelhouse/server/hosted.js      hosted environments (Codespaces, Gitpod, the Public address setting) and a port's public address there
 test/                            the tests
 ```
 
@@ -28,7 +29,7 @@ It is built on Wheelhouse's [host routes and address rewrites](https://github.co
 
 ## Which ports it opens
 
-Only a port the crew has reported an address on since Wheelhouse started (`ctx.loopbackAddresses()`), or one **More ports to allow** lists; any other shows a page saying so, with how to allow it and a direct link for use on Wheelhouse's own computer. It never opens one of Wheelhouse's own ports (`ctx.reservedPorts()`: its server and MCP app sandboxes), even when listed.
+Only a port the crew has reported an address on since Wheelhouse started (`ctx.loopbackAddresses()`), or one **More ports to allow** lists; any other shows a page saying so, with how to allow it and a direct link for use on Wheelhouse's own computer (or, in a hosted environment, to the port's [public address](#in-ona-gitpod-codespaces-or-on-a-remote-machine)). It never opens one of Wheelhouse's own ports (`ctx.reservedPorts()`: its server and MCP app sandboxes), even when listed.
 
 ![The page the proxy shows for port 4000, which nothing has reported: Not shared through Wheelhouse, with how to allow it under Settings → Plugins and a direct link for Wheelhouse's own computer](docs/images/localhost-proxy-not-shared.png)
 
@@ -37,6 +38,34 @@ Only a port the crew has reported an address on since Wheelhouse started (`ctx.l
 ```json
 { "plugins": { "localhost-proxy": { "enabled": true, "settings": { "ports": ["3000", "8080"] } } } }
 ```
+
+## In Ona, Gitpod, Codespaces or on a remote machine
+
+When Wheelhouse runs in a hosted dev environment, there are two ways to open it, and the plugin suits one of them.
+
+**Through a forwarded port: the plugin works as anywhere.** Forward Wheelhouse's port to your own computer and open `http://localhost:4310`. A desktop editor connected to the environment (VS Code, Cursor, JetBrains Gateway) forwards it for you, `gh codespace ports forward 4310:4310` does for a codespace, and `ssh -L 4310:localhost:4310 <host>` does for any machine you reach over SSH, Ona and Gitpod environments included. Every preview then opens at `http://<port>.localhost:4310` through the plugin, and only Wheelhouse's port needs forwarding.
+
+**Through the environment's public address**, such as `https://4310-abc123.ws-eu45.gitpod.io` or `https://my-codespace-4310.app.github.dev`. There, a `*.localhost` name goes to your own computer, not the environment, so the plugin's `{port}.localhost` addresses cannot reach it: keep the plugin off. Showing preview links and addresses at the environment's public port addresses is Wheelhouse's own part, not this plugin's, since a plugin's address rewrite can name only a `*.localhost` host on the viewer's own port (see Wheelhouse's [host routes and address rewrites](https://github.com/chrisjowen/wheelhouse/blob/main/docs/plugins.md#host-routes-and-address-rewrites)). That part depends on a Wheelhouse version that rewrites previews to the environment's public port addresses when it runs in a hosted environment. With an older Wheelhouse, preview links opened this way stay on `localhost`: open each preview at the environment's own address for its port by hand, or use the forwarded-port way above.
+
+**Where a port's public address is.** The plugin works it out from the environment, or from its **Public address of a port** setting, which wins when set:
+
+| Where Wheelhouse runs                         | Found from                                                                      | A port's public address              |
+| --------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------ |
+| GitHub Codespaces                             | `CODESPACES=true`, `CODESPACE_NAME`, `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN` | `https://<name>-<port>.<domain>`     |
+| Gitpod Classic                                | `GITPOD_WORKSPACE_URL`                                                          | `https://<port>-<workspace host>`    |
+| Ona, a devcontainer host, a VM, anywhere else | the **Public address of a port** setting                                        | the setting, with `{port}` filled in |
+
+The setting is an http(s) address with `{port}` once in it: in a host name (`https://{port}-myhost.example.dev`), as the port (`http://my-vm.example.dev:{port}`, for a machine whose ports are open to you) or in a path (`https://ide.example.dev/proxy/{port}/`, for an editor that serves ports under a path). An Ona environment sets no variable a port's address can be worked out from: open a port with `ona environment port open <port>`, which prints its address, and copy that address into the setting with the port number replaced by `{port}`. Ona serves only ports listened on at `0.0.0.0`.
+
+```json
+{
+	"plugins": {
+		"localhost-proxy": { "settings": { "publicAddress": "https://{port}-myhost.example.dev" } }
+	}
+}
+```
+
+The plugin's own part needs no newer Wheelhouse than one with host routes and address rewrites ([chrisjowen/wheelhouse#86](https://github.com/chrisjowen/wheelhouse/pull/86)): its `{port}.localhost` proxy stays the fallback for the forwarded-port way, it finds the hosted environment from the variables above, and it uses a port's public address on its own pages: the page for a port it does not open links to that address instead of `http://localhost:<port>`, which only works on Wheelhouse's own computer. Its address rewrite stays `{port}.localhost` either way, and with no setting and no hosted environment found, nothing changes. Whether a public address answers you (a private Codespaces or Gitpod port wants you signed in) is the environment's to say.
 
 ## What turning it on exposes
 

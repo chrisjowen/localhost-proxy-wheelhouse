@@ -22,6 +22,11 @@
 				"description": "Ports on Wheelhouse’s computer to open even when nobody has reported them (for example 3000, 8080). Wheelhouse’s own port is never opened.",
 				"type": "list",
 				"default": []
+			},
+			"publicAddress": {
+				"title": "Public address of a port",
+				"description": "Where your browser opens a port when Wheelhouse runs on a hosted or remote machine, with {port} for the port: such as https://{port}--abc123.example.dev or http://my-vm.example.dev:{port}. Codespaces and Gitpod are found without it. The proxy’s pages link there; empty for none.",
+				"type": "text"
 			}
 		}
 	}

@@ -48,6 +48,13 @@ describe('the manifest', () => {
 		assert.equal(manifest.wheelhouse.settings.ports.type, 'list');
 	});
 
+	it('has no public address until the captain sets one', () => {
+		const setting = manifest.wheelhouse.settings.publicAddress;
+		assert.equal(setting.type, 'text');
+		assert.equal(setting.default, undefined);
+		assert.equal(setting.required, undefined);
+	});
+
 	it('agrees with package.json on the version', () => {
 		const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 		assert.equal(pkg.version, manifest.version);

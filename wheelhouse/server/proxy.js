@@ -11,7 +11,9 @@
  * one of Wheelhouse's own (`ctx.reservedPorts()`). The proxied app sees its
  * own address (Host, Origin and Referer are rewritten to `localhost:<port>`),
  * and redirects and cookies it sends are rewritten to the proxied address.
- * Bodies pass through untouched.
+ * Bodies pass through untouched. When Wheelhouse runs in a hosted environment
+ * (see hosted.js), the page for a port it does not open links to that port's
+ * public address there.
  *
  * @typedef {import('node:http').IncomingMessage} IncomingMessage
  * @typedef {import('node:http').ServerResponse} ServerResponse
@@ -37,6 +39,7 @@
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
 import { loopbackPort, settingPorts } from './addresses.js';
+import { publicPattern, publicPortUrl } from './hosted.js';
 
 /** Hop-by-hop headers, never passed on in either direction. */
 const HOP = new Set([
@@ -52,13 +55,15 @@ const HOP = new Set([
 
 export class LocalProxy {
 	/**
-	 * @param {{ targets?: string[]; connectTimeoutMs?: number }} [opts] `targets` are the
-	 *   loopback addresses tried in turn; tests may narrow them.
+	 * @param {{ targets?: string[]; connectTimeoutMs?: number; env?: Record<string, string | undefined> }} [opts]
+	 *   `targets` are the loopback addresses tried in turn, and `env` the variables a hosted
+	 *   environment is recognised by (Wheelhouse's own); tests may narrow or set them.
 	 */
 	constructor(opts = {}) {
 		/** @type {string[]} */
 		this.targets = opts.targets ?? ['127.0.0.1', '::1'];
 		this.connectTimeoutMs = opts.connectTimeoutMs ?? 3_000;
+		this.env = opts.env ?? process.env;
 	}
 
 	/**
@@ -100,7 +105,8 @@ export class LocalProxy {
 		const reported =
 			listed || (await ctx.loopbackAddresses()).some((a) => loopbackPort(a) === port);
 		if (!reported) {
-			return { ok: false, status: 403, page: page(notShared(port, ctx.host, path)) };
+			const hosted = publicPattern(ctx.settings, this.env);
+			return { ok: false, status: 403, page: page(notShared(port, ctx.host, path, hosted)) };
 		}
 		return { ok: true, port };
 	}
@@ -385,18 +391,22 @@ function ownPort(port) {
  * @param {number} port
  * @param {string} host
  * @param {string} path
+ * @param {import('./hosted.js').Hosted | null} hosted
  * @returns {Explained}
  */
-function notShared(port, host, path) {
+function notShared(port, host, path, hosted) {
 	const direct = `http://localhost:${port}${path.startsWith('/') ? path : '/'}`;
 	const at = host.split(':')[1];
 	const settings = `http://localhost${at ? `:${at}` : ''}/settings/plugins/localhost-proxy`;
+	const open = hosted && publicPortUrl(direct, hosted.pattern);
 	return {
 		title: 'Not shared through Wheelhouse',
 		lines: [
 			`Wheelhouse’s localhost proxy opens only the ports the crew has reported an address on, and those its settings list. Nothing has reported port ${port}.`,
 			`To open it anyway, add ${port} to <b>More ports to allow</b> on the Localhost proxy’s page under <a href="${escape(settings)}">Settings → Plugins</a>, then reload this page.`,
-			`On Wheelhouse’s own computer you can also open it directly: <a href="${escape(direct)}">${escape(direct)}</a>.`
+			hosted && open
+				? `You can also open it at its public address, as ${escape(hosted.name)} gives it: <a href="${escape(open)}">${escape(open)}</a>.`
+				: `On Wheelhouse’s own computer you can also open it directly: <a href="${escape(direct)}">${escape(direct)}</a>.`
 		]
 	};
 }
